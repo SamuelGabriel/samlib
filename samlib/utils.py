@@ -16,3 +16,9 @@ def chunker(chunk_length, iterable):
         if not chunk:
             return
         yield chunk
+
+
+def set_locals_in_self(locals):
+    self = locals['self']
+    for var_name, val in locals.items():
+        if var_name != 'self': setattr(self, var_name, val)
