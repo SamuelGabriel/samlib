@@ -7,6 +7,30 @@ from submitit import *
 R = tp.TypeVar("R", covariant=True)
 
 
+def print_job_out(job, only_stdout=False, only_stderr=False, last_x_lines=None):
+    assert not (only_stderr and only_stdout)
+    if not only_stderr:
+        print("STD OUT")
+        so = job.stdout().replace('\\n', '\n')
+        print('\n'.join(so.split('\n')[-last_x_lines:]) if last_x_lines else so)
+    if not only_stdout:
+        print("STD ERR")
+        se = job.stderr().replace('\\n', '\n')
+        print(se[-last_x_lines:] if last_x_lines else se)
+
+
+Job.print = print_job_out
+SlurmJob.print = print_job_out
+
+
+class JobGroup(list):
+    def cancel(self):
+        for job in self:
+            job.cancel()
+
+    def __repr__(self):
+        return f"JobGroup({super().__repr__()})"
+
 class ConfigLoggingAutoExecutor(AutoExecutor):
     groups = {}
 
@@ -29,17 +53,20 @@ class ConfigLoggingAutoExecutor(AutoExecutor):
         self.groups[name] = jobs
         with open(job_list_fname, 'wb') as f:
             cloudpickle.dump(jobs, f)
-        return jobs
+        return JobGroup(jobs)
 
     def get_group(self, name: str) -> tp.List[Job]:
         if name not in self.groups:
             with open(self.folder / (name + '.joblist'), 'rb') as f:
                 self.groups[name] = cloudpickle.load(f)
-        return self.groups[name]
+        return JobGroup(self.groups[name])
 
-    def cancel_group(self, name: str):
-        for job in self.get_group(name):
-            job.cancel()
+    def is_group(self, name):
+        try:
+            self.get_group(name)
+            return True
+        except FileNotFoundError:
+            return False
 
     def list_groups(self):
         return list(self.groups.keys())
@@ -57,17 +84,6 @@ def get_executor(folder="submitit_logs",timeout_min=60, slurm_partition="testdlc
                                slurm_setup=slurm_setup, **kwargs)
     return executor
 
-
-def print_job_out(job, only_stdout=False, only_stderr=False, last_x_lines=None):
-    assert not (only_stderr and only_stdout)
-    if not only_stderr:
-        print("STD OUT")
-        so = job.stdout().replace('\\n', '\n')
-        print(so[-last_x_lines:] if last_x_lines else so)
-    if not only_stdout:
-        print("STD ERR")
-        se = job.stderr().replace('\\n', '\n')
-        print(se[-last_x_lines:] if last_x_lines else se)
 
 def print_job_states(jobs):
     for j in jobs:
